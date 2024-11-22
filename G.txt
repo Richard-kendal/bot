@@ -1,0 +1,174 @@
+from telethon import TelegramClient
+
+# Вставьте сюда ваши данные
+api_id = 'YOUR_API_ID'
+api_hash = 'YOUR_API_HASH'
+phone_number = 'YOUR_PHONE_NUMBER'
+
+# Создание клиента
+client = TelegramClient('session_name', api_id, api_hash)
+
+async def send_message(chat_id, message):
+    await client.start(phone_number)
+    await client.send_message(chat_id, message)
+    print(f"Сообщение отправлено пользователю {chat_id}: {message}")
+
+if name == '__main__':
+    import asyncio
+    import sys
+
+    if len(sys.argv) != 3:
+        print("Использование: python send_message.py <chat_id> <message>")
+        sys.exit(1)
+
+    chat_id = sys.argv[1]
+    message = sys.argv[2]
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(send_message(chat_id, message))
+send_message.py
+
+from telegram.ext import Updater, MessageHandler, Filters, CallbackContext, CommandHandler
+from telegram import Update
+import subprocess
+import speech_recognition as sr
+from datetime import datetime, timedelta
+import random
+from transformers import pipeline
+from telethon.sync import TelegramClient
+from telethon.tl.functions.contacts import ResolveUsername
+
+# Вставьте сюда ваш токен бота и данные Telethon
+TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'
+api_id = 'YOUR_API_ID'
+api_hash = 'YOUR_API_HASH'
+phone_number = 'YOUR_PHONE_NUMBER'
+
+# Создание клиента Telethon
+client = TelegramClient('session_name', api_id, api_hash)
+client.start(phone_number)
+
+tasks = {}
+reminders = {}
+meetings = {}
+notes = {}
+timers = {}
+alarms = {}
+active_alarms = {}
+active_timers = {}
+
+# Инициализация модели для генерации ответов
+generator = pipeline('text-generation', model='gpt-2')
+
+def start(update: Update, context: CallbackContext) -> None:
+    user_id = update.message.from_user.id
+    tasks[user_id] = []
+    reminders[user_id] = None
+    meetings[user_id] = []
+    notes[user_id] = []
+    timers[user_id] = []
+    alarms[user_id] = None
+    active_alarms[user_id] = False
+    active_timers[user_id] = False
+    update.message.reply_text('Привет! Я ваш помощник. Говорите задачи, встречи, заметки, таймеры и будильники, и я их запишу. Также укажите время напоминания, например, "Напомни мне в 22:00".')
+
+def handle_message(update: Update, context: CallbackContext) -> None:
+    user_id = update.message.from_user.id
+    text = update.message.text.lower()
+    if text == "кар":
+        if active_alarms[user_id]:
+            context.job_queue.get_jobs_by_name(f'alarm_{user_id}')[0].schedule_removal()
+            active_alarms[user_id] = False
+            update.message.reply_text('Будильник остановлен.')
+        if active_timers[user_id]:
+            context.job_queue.get_jobs_by_name(f'timer_{user_id}')[0].schedule_removal()
+            active_timers[user_id] = False
+            update.message.reply_text('Таймер остановлен.')
+    else:
+        process_input(update, context, user_id, text)
+
+def handle_voice(update: Update, context: CallbackContext) -> None:
+    user_id = update.message.from_user.id
+    file = update.message.voice.get_file()
+    file.download('voice.ogg')
+
+    recognizer = sr.Recognizer()
+    with sr.AudioFile('voice.ogg') as source:
+        audio = recognizer.record(source)
+    
+    try:
+        text = recognizer.recognize_google(audio, language="ru-RU")
+        if "ежик" in text.lower():
+            handle_message(update, context, text)
+        else:
+            update.message.reply_text(f"Вы сказали: {text}")
+    except sr.UnknownValueError:
+        update.message.reply_text("Извините, я не смог распознать вашу речь.")
+    except sr.RequestError:
+        update.message.reply_text("Ошибка сервиса распознавания речи.")
+
+def process_input(update: Update, context: CallbackContext, user_id: int, text: str) -> None:
+    if "должен сделать" в text:
+        task = text.replace("я должен сделать", "").strip()
+        tasks[user_id].append(task)
+        update.message.reply_text(f'Задача "{task}" добавлена.')
+    elif "напомни мне в" в text:
+        time_str = text.split("напомни мне в")[1].strip()
+        try:
+            reminder_time = datetime.strptime(time_str, '%H:%M').time()
+            reminders[user_id] = reminder_time
+            update.message.reply_text(f'Напоминание установлено на {reminder_time}.')
+        except ValueError:
+            update.message.reply_text("Пожалуйста, укажите время в формате ЧЧ:ММ.")
+    elif "встреча в" в text:
+        meeting_time_str = text.split("встреча в")[1].strip()
+        meeting_desc = " ".join(text.split("встреча в")[0].split()[1:]).strip()
+        try:
+            meeting_time = datetime.strptime(meeting_time_str, '%H:%M').time()
+            meetings[user_id].append((meeting_time, meeting_desc))
+            update.message.reply_text(f'Встреча "{meeting_desc}" добавлена на {meeting_time}.')
+        except ValueError:
+            update.message.reply_text("Пожалуйста, укажите время встречи в формате ЧЧ:ММ.")
+elif "создай заметку" в text:
+        note = text.replace("создай заметку", "").strip()
+        notes[user_id].append(note)
+        update.message.reply_text(f'Заметка "{note}" добавлена.')
+    elif "таймер на" в text:
+        duration_str = text.split("таймер на")[1].strip()
+        try:
+            duration = int(duration_str)
+            end_time = datetime.now() + timedelta(minutes=duration)
+            timers[user_id].append(end_time)
+            active_timers[user_id] = True
+            context.job_queue.run_repeating(timer_reminder, interval=60, first=duration * 60, context=user_id, name=f'timer_{user_id}')
+            update.message.reply_text(f'Таймер установлен на {duration} минут.')
+        except ValueError:
+            update.message.reply_text("Пожалуйста, укажите время в минутах.")
+    elif "поставь будильник на" в text:
+        time_str = text.split("поставь будильник на")[1].strip()
+        try:
+            alarm_time = datetime.strptime(time_str, '%H:%M').time()
+            alarms[user_id] = alarm_time
+            active_alarms[user_id] = True
+            context.job_queue.run_repeating(alarm_reminder, interval=60, first=(alarm_time.hour*3600 + alarm_time.minute*60 - datetime.now().hour*3600 - datetime.now().minute*60), context=user_id, name=f'alarm_{user_id}')
+            update.message.reply_text(f'Будильник установлен на {alarm_time}.')
+        except ValueError:
+            update.message.reply_text("Пожалуйста, укажите время в формате ЧЧ:ММ.")
+    elif "как отдохнуть" в text or "хочу отдохнуть" в text:
+        tip = random.choice(relaxation_tips)
+        update.message.reply_text(f"Вот вам совет для отдыха: {tip}")
+    elif text.startswith("отправь сообщение"):
+        parts = text.split()
+        username = parts[2]
+        message = ' '.join(parts[3:])
+        try:
+            result = client(ResolveUsername(username))
+            chat_id = result.peer.user_id
+            subprocess.run(['python', 'send_message.py', str(chat_id), message])
+            update.message.reply_text(f"Сообщение отправлено пользователю {username}: {message}")
+        except Exception as e:
+            update.message.reply_text(f"Не удалось отправить сообщение: {str(e)}")
+    else:
+        response = generate_response(text)
+        update.message.reply_text(response)
+
+def generate_response(user_input
