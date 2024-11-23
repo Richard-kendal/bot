@@ -8,6 +8,15 @@ from webdriver_manager.chrome import ChromeDriverManager
 from PIL import Image
 import io
 import os
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    logging.debug('Received start command')
+    # rest of your code
+
 
 API_TOKEN = '7540520199:AAHDILtQfWgv3OrbDkMM5XFfCzX-WNrgvwA'
 bot = telebot.TeleBot(API_TOKEN)
