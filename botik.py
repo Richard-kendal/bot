@@ -5,7 +5,7 @@ import os
 import json
 
 # Создание бота
-bot = telebot.TeleBot('YOUR_TELEGRAM_BOT_API_KEY')
+bot = telebot.TeleBot("7540520199:AAHDILtQfWgv3OrbDkMM5XFfCzX-WNrgvwA")
 
 # Папка для хранения данных пользователей
 DATA_DIR = 'user_data'
